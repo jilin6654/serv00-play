@@ -360,7 +360,7 @@ checkDownload() {
   #检查并下载核心程序
   if [[ ! -e $file ]] || [[ $(file $file) == *"text"* ]]; then
     echo "正在下载 $file..."
-    url="https://gfg.fkj.pp.ua/app/serv00/$filegz?pwd=fkjyyds666"
+    url="https://github.com/jilin6654/serv00-play/releases/download/v10.0/$filegz"
     curl -L -sS --max-time 20 -o $filegz "$url"
 
     if file $filegz | grep -q "text"; then

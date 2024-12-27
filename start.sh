@@ -33,8 +33,6 @@ install(){
      #重新给各个脚本赋权限
       chmod +x ./start.sh
       chmod +x ./keepalive.sh
-      chmod +x ${installpath}/serv00-play/singbox/start.sh
-      chmod +x ${installpath}/serv00-play/singbox/killsing-box.sh
       chmod +x ${installpath}/serv00-play/ssl/cronSSL.sh
       red "请重新启动脚本!"
       exit 0
@@ -43,50 +41,15 @@ install(){
   
   cd ${installpath}
   echo "正在安装..."
-  if ! git clone https://github.com/frankiejun/serv00-play.git; then
+  if ! git clone https://github.com/jilin6654/serv00-play.git; then
     echo -e "${RED}安装失败!${RESET}"
     exit 1;
   fi
   echo -e "${YELLOW}安装成功${RESET}"
 }
 
-showSingBoxInfo(){
-  cd ${installpath}/serv00-play/singbox
-  
-  if [ ! -f singbox.json ]; then
-      red "配置文件不存在，请先行配置!"
-      return
-  fi
-  if [ ! -e list ]; then
-     red "请先运行sing-box"
-  fi
-  config="singbox.json"
-  type=$(jq -r ".TYPE" $config)
-  chmod +x ./start.sh && ./start.sh $type list
-
-}
 
 
-chooseSingbox(){
-   echo "保活sing-box中哪个项目: "
-   echo " 1.hy2/vmess+ws/socks5 "
-   echo " 2.argo+vmess "
-   echo " 3.all "
-   read -p "请选择:" input
-  
-  if [ "$input" = "1" ]; then
-     item+=("hy2/vmess+ws")
-  elif [ "$input" = "2" ]; then
-      item+=("vmess")
-  elif [ "$input" = "3" ]; then
-  item+=("hy2/vmess+ws")
-  item+=("vmess")
-  else 
-      red "无效选择!"
-      return 1
- fi
-
-}
 
 setConfig(){
   cd ${installpath}/serv00-play/
@@ -108,13 +71,8 @@ createConfigFile(){
   
   echo "选择你要保活的项目（可多选，用空格分隔）:"
   echo "1. sun-panel "
-  echo "2. sing-box(包含hy2，vmess，socks5) "
-  echo "3. 哪吒探针 "
-  echo "4. mtproto代理"
-  echo "5. alist"
-  echo "6. webssh"
-  echo "88. 暂停所有保活功能"
-  echo "99. 复通所有保活功能(之前有配置的情况下)"
+  echo "2. alist"
+  echo "3. webssh"
   item=()
 
   read -p "请选择: " choices
@@ -135,39 +93,11 @@ createConfigFile(){
        item+=("sun-panel")
        ;;
     2)
-      if ! chooseSingbox; then
-      return 
-      fi
-      ;;
-    3) 
-      item+=("nezha-agent")
-       ;;
-    4)
-      item+=("mtg")
-      ;;
-    5)
       item+=("alist")
       ;;
-    6) 
+    3) 
       item+=("webssh")
       ;;
-    88)
-       delCron
-       backupConfig "config.json"
-       green "设置完毕!"
-       return 0
-       ;;
-    99)
-       if [[ ! -e config.bak ]]; then
-          red "之前未有配置，未能复通!"
-          return 1
-       fi
-       restoreConfig "config.bak"
-       tm=$(jq -r ".chktime" config.json)
-       addCron $tm
-       green "设置完毕!"
-       return 0
-       ;;
     *)
        echo "无效选择"
        return 1
@@ -195,8 +125,8 @@ done
     return
   fi
 
-  read -p "配置保活检查的时间间隔(单位分钟，默认5分钟):" tm
-  tm=${tm:-"5"}
+  read -p "配置保活检查的时间间隔(单位分钟，默认1分钟):" tm
+  tm=${tm:-"1"}
 
   json_content+="   \"chktime\": \"$tm\","
 
@@ -258,435 +188,7 @@ restoreConfig(){
   fi
 }
 
-make_vmess_config() {
-  cat >tempvmess.json <<EOF
-  {
-      "tag": "vmess-ws-in",
-      "type": "vmess",
-      "listen": "::",
-      "listen_port": $vmport,
-      "users": [
-      {
-        "uuid": "$uuid"
-      }
-    ],
-    "transport": {
-      "type": "ws",
-      "path": "/$wspath",
-      "early_data_header_name": "Sec-WebSocket-Protocol"
-      }
-    }
-EOF
-}
 
-make_hy2_config() {
-  cat > temphy2.json <<EOF
-   {
-       "tag": "hysteria-in",
-       "type": "hysteria2",
-       "listen": "$hy2_ip",
-       "listen_port": $hy2_port,
-       "users": [
-         {
-             "password": "$uuid"
-         }
-     ],
-     "masquerade": "https://www.bing.com",
-     "tls": {
-         "enabled": true,
-         "alpn": [
-             "h3"
-         ],
-         "certificate_path": "cert.pem",
-         "key_path": "private.key"
-        }
-    }
-EOF
-}
-
-make_socks5_config(){
-  cat > tmpsocks5.json <<EOF
-  {
-      "type": "socks",
-      "tag": "socks-in",
-
-       "listen": "::",
-       "listen_port": $socks5_port,
-
-        "users": [
-        {
-          "username": "$username",
-          "password": "$password"
-        }
-        ]
-    }
-EOF
-}
-
-generate_config() {
-   comma=""
-   comma0=""
-  if [[ ! -e "private.key" || ! -e "cert.pem" ]]; then
-    openssl ecparam -genkey -name prime256v1 -out "private.key"
-    openssl req -new -x509 -days 3650 -key "private.key" -out "cert.pem" -subj "/CN=www.bing.com"
-  fi
-  if [[ "$type" == "1.1" || "$type" == "1.2" ]]; then
-    make_vmess_config
-  elif [ "$type" = "2" ]; then
-    make_hy2_config
-  elif [ "$type" = "1.3" ]; then
-    make_socks5_config
-  elif [[ "$type" =~ ^(2.4|2.5)$ ]]; then
-    make_vmess_config
-    comma0=","
-    make_socks5_config
-  elif [[ "$type" =~ ^(3.1|3.2)$ ]]; then
-    make_vmess_config
-    comma=","
-    make_hy2_config
-  elif [[ "$type" == "3.3" ]]; then
-    make_hy2_config
-    make_socks5_config
-    comma0=","
-  else
-    make_socks5_config
-    make_vmess_config
-    make_hy2_config
-    comma=","
-    comma0=","
-  fi
-
-  cat >config.json <<EOF
- {
-  "log": {
-    "disabled": true,
-    "level": "info",
-    "timestamp": true
-  },
-  "dns": {
-    "servers": [
-      {
-        "tag": "google",
-        "address": "tls://8.8.8.8",
-        "strategy": "ipv4_only",
-        "detour": "direct"
-      }
-    ],
-    "rules": [
-      {
-        "rule_set": [
-          "geosite-category-ads-all"
-        ],
-        "server": "block"
-      }
-    ],
-    "final": "google",
-    "strategy": "",
-    "disable_cache": false,
-    "disable_expire": false
-  },
-    "inbounds": [
-    $([[ "$type" =~ ^(1.3|3.3|2.4|2.5|3.3|4.4|4.5)$ ]] && cat tmpsocks5.json)
-    $comma0
-    $([[ "$type" == "1.1" || "$type" == "1.2" || "$type" =~ ^(2.4|2.5|3.1|3.2|4.4|4.5)$  ]] && cat tempvmess.json)
-    $comma
-    $([[ "$type" == "2" || "$type" =~ ^(3|4)\.[0-9]+$ ]] && cat temphy2.json)
-   ],
-    "outbounds": [
-    {
-      "type": "direct",
-      "tag": "direct"
-    },
-    {
-      "type": "block",
-      "tag": "block"
-    },
-    {
-      "type": "dns",
-      "tag": "dns-out"
-    }
-  ],
-  "route": {
-    "rules": [
-      {
-        "protocol": "dns",
-        "outbound": "dns-out"
-      },
-      { 
-        "ip_is_private": true,
-        "outbound": "direct"
-      },
-      {
-        "rule_set": [
-          "geosite-category-ads-all"
-        ],
-        "outbound": "block"
-      }
-    ],
-    "rule_set": [
-      {
-        "tag": "geosite-category-ads-all",
-        "type": "remote",
-        "format": "binary",
-        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ads-all.srs",
-        "download_detour": "direct"
-      }
-    ],
-    "final": "direct"
-   }
-}
-EOF
-rm -rf tempvmess.json temphy2.json tmpsocks5.json
-}
-
-
-configSingBox(){
-   if ! checkInstalled "serv00-play"; then
-      return 1
-  fi
-  cd ${installpath}/serv00-play/singbox
-
-  loadPort
-  if [ -e singbox.json ]; then
-    red "目前已有配置如下:"
-    cat singbox.json
-    read -p "$(echo -e "${RED}继续配置将会覆盖原有配置:[y/n] [n]${RESET}") " input
-    input=${input:-n}
-    if [ "$input" != "y" ]; then
-       return 1
-    fi
-  fi
-  echo "选择你要配置的项目（可多选，用空格分隔）:"
-  echo "1. vmess"
-  echo "2. hy2"
-  echo "3. socks5"
-  echo "4. all"
-
-  read -p "请选择: " choices
-  choices=($choices)  
-
-  if [[ "${choices[@]}" =~ "4" ]]; then
-    choices=("4")
-  fi
-
-  #过滤重复
-  choices=($(echo "${choices[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
-  type="0"
-  # 根据选择来询问对应的配置
-  for choice in "${choices[@]}"; do
-    case "$choice" in
-      1)
-        echo "请选择协议(2选1):"
-        echo "1. argo+vmess"
-        echo "2. vmess+ws "
-        read -p "请选择:" co
-        
-        if [[ "$co" != "1" && "$co" != "2" ]]; then 
-          echo "无效输入!"
-          return 1
-        fi
-        
-        if [[ "$co" == "1" ]]; then
-          type=$(echo "$type + 1.1" | bc)
-           randomPort tcp vmess
-           if [[ -n "$port" ]]; then
-              vmport="$port"
-           fi
-          read -p "请输入WSPATH,默认是[serv00]: " wspath
-          read -p "请输入ARGO隧道token: " token
-          read -p "请输入ARGO隧道的域名: " domain
-        else
-          type=$(echo "$type + 1.2" | bc)
-           randomPort tcp vmess
-           if [[ -n "$port" ]]; then
-              vmport="$port"
-           else
-              red "未输入端口号"
-              return 1
-           fi
-          read -p "请输入WSPATH,默认是[serv00]: " wspath
-          read -p "请输入优选域名:"  goodDomain
-        fi
-        ;;
-      2)
-        type=$(echo "$type + 2" | bc)
-        randomPort udp hy2
-        if [[ -n "$port" ]]; then
-          hy2_port="$port"
-        else
-          red "未输入端口号"
-          return 1
-        fi
-        echo "自动选择未封ip..."
-        hy2_ip=$(get_ip)
-        if [[ -n "$hy2_ip" ]]; then
-           green "选中未封ip为 $hy2_ip"
-        else
-           red "未能找到未封IP,保持默认值！"
-        fi
-        ;;
-      3)
-         type=$(echo "$type + 1.3" | bc)
-         randomPort tcp socks5
-          if [[ -n "$port" ]]; then
-          socks5_port="$port"
-        else
-          red "未输入端口号"
-          return 1
-        fi
-        read -p "请输入socks5用户名:" username
-        read -p "请输入socks5密码:" password
-        ;;
-      4)
-        echo "请选择协议(2选1):"
-        echo "1. argo+vmess"
-        echo "2. vmess+ws "
-        read -p "请选择:" co
-        
-        if [[ "$co" != "1" && "$co" != "2" ]]; then 
-          echo "无效输入!"
-          return 1
-        fi
-        
-        if [[ "$co" == "1" ]]; then
-          type="3.1"
-           randomPort tcp vmess
-           if [[ -n "$port" ]]; then
-              vmport="$port"
-          else
-              red "未输入端口号"
-              return 1
-          fi
-          read -p "请输入WSPATH,默认是[serv00]: " wspath
-          read -p "请输入ARGO隧道token: " token
-          read -p "请输入ARGO隧道的域名: " domain
-        else
-          type="3.2"
-           randomPort tcp vmess
-           if [[ -n "$port" ]]; then
-              vmport="$port"
-          else
-              red "未输入端口号"
-              return 1
-          fi
-          read -p "请输入WSPATH,默认是[serv00]: " wspath
-          read -p "请输入优选域名:"  goodDomain
-        fi
-        # 配置 hy2
-        randomPort udp hy2
-        if [[ -n "$port" ]]; then
-          hy2_port="$port"
-        else
-           red "未输入端口号"
-           return 1
-        fi
-        echo "自动选择未封ip..."
-        hy2_ip=$(get_ip)
-        if [[ -n "$hy2_ip" ]]; then
-           green "选中未封ip为 $hy2_ip"
-        else
-           red "未能找到未封IP,保持默认值！"
-        fi
-        #配置socks5
-        type=$(echo "$type + 1.3" | bc)
-        randomPort tcp socks5
-        if [[ -n "$port" ]]; then
-          socks5_port="$port"
-        else
-          red "未输入端口号"
-          return 1
-        fi
-        read -p "请输入socks5用户名:" username
-        read -p "请输入socks5密码:" password
-        ;;
-      *)
-        echo "无效的选择: $choice"
-        ;;
-    esac
- done
-
-  
-  if [[ "$type" != "1.3" ]]; then
-    wspath=${wspath:-serv00}
-    read -p "是否自动分配UUID? [y/n] [y]:" input
-    input=${input:-y}
-    if [[ "$input" == "y" ]]; then
-      uuid=$(uuidgen -r)
-    else
-      read -p "请输入UUID:" uuid
-    fi
-  fi
-
-   cat > singbox.json <<EOF
-  {
-     "TYPE": "$type",
-     "VMPORT": ${vmport:-null},
-     "HY2IP": "${hy2_ip:-'::'}",
-     "HY2PORT": ${hy2_port:-null},
-     "UUID": "$uuid",
-     "WSPATH": "${wspath}",
-     "ARGO_AUTH": "${token:-null}",
-     "ARGO_DOMAIN": "${domain:-null}",
-     "GOOD_DOMAIN": "${goodDomain:-null}",
-     "SOCKS5_PORT": "${socks5_port:-null}",
-     "SOCKS5_USER": "${username:-null}",
-     "SOCKS5_PASS": "${password:-null}"
-  }
-
-EOF
-
-    generate_config
-    yellow "sing-box配置完毕!"  
-
-}
-
-startSingBox(){
-  cd ${installpath}/serv00-play/singbox
-  
-  if [[ ! -e "singbox.json" ]]; then
-     red "请先进行配置!"
-     return 1
-  fi
-  
-  # if [[ ! -e ${installpath}/serv00-play/singbox/serv00sb ]] || [[ ! -e ${installpath}/serv00-play/singbox/cloudflared ]]; then
-  #   read -p "请输入使用密码:" password
-  # fi
-  
-  if ! checkDownload "serv00sb"; then
-     return 
-  fi
-  if ! checkDownload "cloudflared"; then
-     return 
-  fi
-  
-  if checkSingboxAlive; then
-    red "sing-box 已在运行，请勿重复操作!"
-    exit 1
-  else
-    chmod 755 ./killsing-box.sh
-    ./killsing-box.sh
-  fi
-
-  if chmod +x start.sh && ! ./start.sh; then
-    red "sing-box启动失败！"
-    exit 1
-  fi
-
-  yellow "启动成功!"
-
-}
-
-stopSingBox(){
-  cd ${installpath}/serv00-play/singbox
-  if [ -f killsing-box.sh ]; then
-    chmod 755 ./killsing-box.sh
-    ./killsing-box.sh
-  else
-    echo "请先安装serv00-play!!!"
-    return
-  fi
-  echo "已停掉sing-box!"
-}
 
 killUserProc(){
   local user=$(whoami)
@@ -835,18 +337,6 @@ ImageRecovery(){
  
 }
 
-uninstall(){
-  read -p "确定卸载吗? [y/n] [n]:" input
-  input=${input:-n}
-
-  if [ "$input" == "y" ]; then
-    delCron
-    stopSingBox
-    cd $HOME
-    rm -rf serv00-play
-    echo "bye!"
-  fi
-}
 
 InitServer(){
   read -p "$(red "将初始化帐号系统，要继续？[y/n] [n]:")" input
@@ -869,219 +359,6 @@ InitServer(){
     
    exit 0
   fi
-}
-
-manageNeZhaAgent(){
-  if ! checkInstalled "serv00-play"; then
-     return 1
-  fi
-  while true; do
-  yellow "-------------------------"
-  echo "探针管理："
-  echo "1.安装探针"
-  echo "2.升级探针"
-  echo "3.启动/重启探针"
-  echo "4.停止探针"
-  echo "9.返回主菜单"
-  echo "0.退出脚本"
-  yellow "-------------------------"
-
-  read -p "请选择:" choice
-  case $choice in 
-    1)
-      installNeZhaAgent
-      ;;
-    2)
-      updateAgent
-      ;;
-    3)
-      startAgent
-      exit 0;
-      ;;
-    4)
-      stopNeZhaAgent
-      ;;
-    9)
-      break
-      ;;
-    0) exit 0
-      ;;
-     *)
-      echo "无效选项，请重试"
-      ;;
-  esac
- done
- showMenu
-}
-
-updateAgent(){
-  red "暂不提供在线升级, 只适配哪吒面板v0版本系列。"
-  return 1
-  exepath="${installpath}/serv00-play/nezha/nezha-agent"
-  if [ ! -e "$exepath" ]; then
-    red "未安装探针，请先安装！！!"
-    return
-  fi
-
-  local workedir="${installpath}/serv00-play/nezha"
-  cd $workedir
-
-  local_version="v"$(./nezha-agent -v)
-  latest_version=$(curl -sL https://github.com/nezhahq/agent/releases/latest | sed -n 's/.*tag\/\(v[0-9.]*\).*/\1/p' | head -1)
-
-  if [[ "$local_version" != "$latest_version" ]]; then
-    echo "发现新版本: $latest_version，当前版本: $local_version。正在更新..."
-    download_url="https://github.com/nezhahq/agent/releases/download/$latest_version/nezha-agent_freebsd_amd64.zip"
-
-    local filezip="nezha-agent_latest.zip"
-    curl -sL -o "$filezip" "$download_url"
-    if [[ ! -e "$filezip" || -n $(file "$filezip" | grep "text") ]]; then
-       echo "下载探针文件失败!"
-       return 
-    fi
-    local agent_runing=0
-    if checknezhaAgentAlive; then
-      stopNeZhaAgent
-      agent_runing=1
-    fi
-    unzip -o $filezip -d .
-    chmod +x ./nezha-agent
-    if [ $agent_runing -eq 1 ]; then
-      startAgent
-    fi
-    rm -rf $filezip
-    green "更新完成！新版本: $latest_version"
-  else
-    echo "已经是最新版本: $local_version"
-  fi
-  if [[ $agent_runing -eq 1 ]]; then
-     exit 0;
-  fi
-}
-
-startAgent(){
-  local workedir="${installpath}/serv00-play/nezha"
-  if [ ! -e "${workedir}" ]; then
-     red "未安装探针，请先安装！！!"
-     return
-  fi
-  cd $workedir
-  
-  local configfile="./nezha.json"
-  if [ ! -e "$configfile" ]; then
-    red "未安装探针，请先安装！！!"
-     return
-  fi
-  
-  nezha_domain=$(jq -r ".nezha_domain" $configfile)
-  nezha_port=$(jq -r ".nezha_port" $configfile)
-  nezha_pwd=$(jq -r ".nezha_pwd" $configfile)
-  tls=$(jq -r ".tls" $configfile)
-
-  if checknezhaAgentAlive; then
-      stopNeZhaAgent
-  fi
-
-  local args="--report-delay 4 --disable-auto-update --disable-force-update "
-  if [[ "$tls" == "y" ]]; then
-     args="${args} --tls "
-  fi
-
-  #echo "./nezha-agent ${args} -s ${nezha_domain}:${nezha_port} -p ${nezha_pwd}"
-  nohup ./nezha-agent ${args} -s ${nezha_domain}:${nezha_port} -p ${nezha_pwd} >/dev/null 2>&1 &
-  
-  if checknezhaAgentAlive; then
-      green "启动成功!"
-  else
-      red "启动失败!"
-  fi
-  #即便使用nohup放后台，此处如果使用ctrl+c退出脚本，nezha-agent进程也会退出。非常奇葩，因此startAgent后只能exit退出脚本，避免用户使用ctrl+c退出。
- 
-}
-
-installNeZhaAgent(){
-  local workedir="${installpath}/serv00-play/nezha"
-  if [ ! -e "${workedir}" ]; then
-     mkdir -p "${workedir}"
-  fi
-   cd ${workedir}
-   if [[ ! -e nezha-agent ]]; then
-    echo "正在下载哪吒探针..."
-    local url="https://github.com/nezhahq/agent/releases/download/v0.20.3/nezha-agent_freebsd_amd64.zip"
-    agentZip="nezha-agent.zip"
-    if ! wget -qO "$agentZip" "$url"; then
-        red "下载哪吒探针失败"
-        return 1
-    fi
-    unzip $agentZip  > /dev/null 2>&1 
-    chmod +x ./nezha-agent
-    green "下载完毕"
-  fi
-  
-  local config="nezha.json"
-  local input="y"
-  if [[ -e "$config" ]]; then
-    echo "哪吒探针配置如下:"
-    cat "$config"
-    read -p "是否修改？ [y/n] [n]:" input
-    input=${input:-n}
-  fi
-  
-  if [[ "$input" == "y" ]]; then
-    read -p "请输入哪吒面板的域名或ip:" nezha_domain
-    read -p "请输入哪吒面板RPC端口(默认 5555):" nezha_port
-    nezha_port=${nezha_port:-5555}
-    read -p "请输入服务器密钥(从哪吒面板中获取):" nezha_pwd
-    read -p "是否启用针对 gRPC 端口的 SSL/TLS加密 (--tls)，需要请按 [y]，默认是不需要，不理解用户可回车跳过: " tls
-    tls=${tls:-"N"}
-  else
-    nezha_domain=$(jq -r ".nezha_domain" $config)
-    nezha_port=$(jq -r ".nezha_port" $config)
-    nezha_pwd=$(jq -r ".nezha_pwd" $config)
-    tls=$(jq -r ".tls" $config)
-  fi
-
-  if [[ -z "$nezha_domain" || -z "$nezha_port" || -z "$nezha_pwd" ]]; then
-      red "以上参数都不能为空！"
-      return 1
-  fi
-
-    cat > $config <<EOF
-    {
-      "nezha_domain": "$nezha_domain",
-      "nezha_port": "$nezha_port",
-      "nezha_pwd": "$nezha_pwd",
-      "tls": "$tls"
-    }
-EOF
-
-  local args="--report-delay 4 --disable-auto-update --disable-force-update "
-  if [[ "$tls" == "y" ]]; then
-     args="${args} --tls "
-  fi
-
-  if checknezhaAgentAlive; then
-      stopNeZhaAgent
-  fi
-
-  nohup ./nezha-agent ${args} -s "${nezha_domain}:${nezha_port}" -p "${nezha_pwd}" >/dev/null 2>&1 &
-  green "哪吒探针成功启动!"
-  
-}
-
-uninstallAgent(){
-  read -p "确定卸载哪吒探针? [y/n] [n]:" input
-  input=${input:-n}
-
-  if [[ "$input" == "y" ]]; then
-    if checknezhaAgentAlive; then
-        stopNeZhaAgent
-    fi
-    local workedir="${installpath}/serv00-play/nezha"
-    rm -rf $workedir
-    green "卸载完毕!"
-  fi
-
 }
 
 setCnTimeZone(){
@@ -1166,168 +443,6 @@ setColorWord(){
 showIP(){
   myip="$(curl -s icanhazip.com)"
   green "本机IP: $myip"
-}
-
-uninstallMtg(){
-  read -p "确定卸载? [y/n] [n]:" input
-  input=${input:-n}
-
-  if [[ "$input" == "n" ]]; then
-     return 1
-  fi
-
-  if [[ -e "mtg" ]]; then
-    if checkProcAlive mtg; then
-      stopMtg
-    fi
-    cd ${installpath}/serv00-play
-    rm -rf dmtg
-    green "卸载完毕！"
-  fi
-}
-
-installMtg(){
-   if [ ! -e "mtg" ]; then 
-    # read -p "请输入使用密码:" password
-    if ! checkDownload "mtg"; then
-      return 1
-    fi
-   fi
-
-   chmod +x ./mtg 
-   if [ -e "config.json" ]; then 
-      echo "已存在配置如下:"
-      cat config.json
-      read -p "是否重新生成配置? [y/n] [n]:" input
-      input=${input:-n}
-      if [ "$input" == "n" ]; then
-         return 0
-      fi
-   fi
-    
-   #自动生成密钥
-   head=$(hostname | cut -d '.' -f 1)
-   no=${head#s}
-   host="panel${no}.serv00.com"
-   secret=$(./mtg generate-secret --hex $host )
-   loadPort
-   randomPort tcp mtg
-  if [[ -n "$port" ]]; then
-      mtpport="$port"
-  fi
-
-   cat > config.json <<EOF
-   {
-      "secret": "$secret",
-      "port": "$mtpport"
-   }
-EOF
-   yellow "安装完成!"
-}
-
-startMtg(){
-  cd ${installpath}/serv00-play
-
-  if [ ! -e "dmtg" ]; then
-     ehco "未安装mtproto，请先行安装配置!"
-     return 1
-  fi
-  cd dmtg
-  config="config.json"
-   if [ ! -e $config ]; then
-      red "未安装mtproto，请先行安装配置!"
-      return 1
-   fi
-
-   if checkMtgAlive; then
-     echo "已在运行,请勿重复启动"
-     return 0
-   fi
-
-   read -p "是否需要日志？: [y/n] [n]:" input
-   input=${input:-n}
-
-   if [ "$input" == "y" ]; then
-      green "日志文件名称为:mtg.log"
-      logfile="-d >mtg.log"
-   else
-       logfile=" >/dev/null "
-   fi
-
-   host="$(hostname | cut -d '.' -f 1)"
-
-   secret=$(jq -r ".secret" $config)
-   port=$(jq -r ".port" $config)
-
-   cmd="nohup ./mtg simple-run -n 1.1.1.1 -t 30s -a 1MB 0.0.0.0:${port} ${secret} -c 8192 --prefer-ip=\"prefer-ipv6\" ${logfile} 2>&1 &"
-   eval "$cmd"
-   sleep 3
-   if checkMtgAlive; then
-    mtproto="https://t.me/proxy?server=${host}.serv00.com&port=${port}&secret=${secret}"
-     echo "$mtproto"
-     green "启动成功"
-   else 
-     echo "启动失败，请检查进程"
-   fi
-
-}
-
-stopMtg(){
-  r=$(ps aux | grep  mtg | grep -v "grep" | awk '{print $2}' )
-  if [ -z "$r" ]; then
-    echo "没有运行!"
-    return
-  else  
-    kill -9 $r
-  fi
-  echo "已停掉mtproto!"
-
-}
-
-mtprotoServ(){
-  if ! checkInstalled "serv00-play"; then
-     return 1
-  fi
-   cd ${installpath}/serv00-play
-
-   if [ ! -e "dmtg" ]; then
-      mkdir -p dmtg
-   fi
-   cd dmtg
-
-   while true; do
-    yellow "---------------------"
-    echo "服务状态: $(checkProcStatus mtg)"
-    echo "mtproto管理:"
-    echo "1. 安装"
-    echo "2. 启动"
-    echo "3. 停止"
-    echo "4. 卸载"
-    echo "9. 返回主菜单"
-    echo "0. 退出脚本"
-    yellow "---------------------"
-    read -p "请选择:" input
-    
-    case $input in
-      1) installMtg
-         ;;
-      2) startMtg
-         ;;
-      3) stopMtg
-         ;;
-      4) uninstallMtg
-         ;;
-      9)  break
-         ;;
-      0) exit 0
-         ;;
-      *)
-         echo "无效选项，请重试"
-         ;;
-    esac
-  done
-  showMenu
-   
 }
 
 extract_user_and_password() {
@@ -1439,13 +554,6 @@ stopAlist(){
   fi
      
 }
-
-# uninstallPHP(){
-#   local domain=$1
-#   initialize_phpjson
-#   delete_domain $domain
-#   yellow "已删除域名 $domain 的相关服务!"
-# }
 
 uninstallProc(){
   local path=$1
@@ -1819,117 +927,6 @@ domainSSLServ(){
     esac 
  done
  showMenu
-}
-
-installRoot(){
-   workpath="${installpath}/serv00-play/root"
-   if [[ ! -e $workpath ]]; then
-      mkdir -p "$workpath"
-   fi
-
-    if [[ -e "$workpath/MrChrootBSD/mrchroot" ]]; then
-      echo "检测到已经安装mrchroot，请勿重复安装!"
-      return 
-    fi
-   echo "正在安装..."
-   cd $workpath
-   git clone https://github.com/nrootconauto/MrChrootBSD.git  
-   cd MrChrootBSD
-   wget https://download.freebsd.org/releases/amd64/14.1-RELEASE/base.txz
-   wget https://download.freebsd.org/releases/amd64/14.1-RELEASE/lib32.txz #Needed for gdb for some reason
-   mkdir chroot
-   cd chroot 
-   tar xvf ../base.txz
-   tar xvf ../lib32.txz
-   cd ..
-   cmake .
-   make
-   cp /etc/resolv.conf chroot/etc
-   if screen -S rootsession -dm ./mrchroot chroot /bin/sh; then
-       echo "安装成功!"
-   else
-       echo "安装失败!"
-   fi
-
-}
-
-enterRoot(){
-    workpath="${installpath}/serv00-play/root/MrChrootBSD"
-    if [[ ! -e "$workpath/mrchroot" ]]; then
-      red "未安装mrchroot，请先行安装!"
-      return 
-    fi
-      
-    SESSION_NAME="rootsession"
-    if screen -list | grep -q "\.$SESSION_NAME"; then
-        echo "进入root..."
-        screen -r "$SESSION_NAME"
-    else
-        echo "未发现root进程，尝试创建井进入root..."
-        cd $workpath
-        if screen -S $SESSION_NAME -dm ./mrchroot chroot /bin/sh; then
-          echo "创建成功!"
-          screen -r "$SESSION_NAME"
-        else
-          echo "创建失败!"
-        fi
-
-    fi
-}
-
-uninstallRoot(){
-  SESSION_NAME="rootsession"
-
-  if [[ ! -e "${installpath}/serv00-play/root" ]]; then
-     echo "未安装root，无需卸载!"
-     return
-  fi
-
-  read -p "确定卸载root吗？[y/n] [n]:" input
-  input=${input:-n}
-
-  if [[ "$input" == "y" ]]; then
-
-    if screen -list | grep -q "\.${SESSION_NAME}"; then
-      screen -S "$SESSION_NAME" -X quit
-    fi
-
-    workpath="${installpath}/serv00-play/"
-    cd $workpath
-    rm -rf ./root
-  fi
-  
-  green "卸载完毕!"
-}
-
-rootServ(){
-  while true; do
-    yellow "---------------------"
-    echo "一键root:"
-    echo "1. 安装root"
-    echo "2. 进入root"
-    echo "3. 卸载root"
-    echo "9. 返回主菜单"
-    echo "0. 退出脚本"
-    yellow "---------------------"
-    read -p "请选择:" input
-    
-    case $input in 
-      1) installRoot
-        ;;
-      2) enterRoot
-        ;;
-      3) uninstallRoot
-        ;;
-      9) break
-        ;;
-      0) exit 0
-         ;;
-      *)  echo "无效选项，请重试"
-        ;;
-    esac 
- done
-   showMenu
 }
 
 getUnblockIP(){
@@ -2462,14 +1459,6 @@ startWebSSH(){
   fi
 }
 
-nonServ(){
-  cat <<EOF
-   占坑位，未开发功能，敬请期待！
-   如果你知道有好的项目，可以到我的频道进行留言投稿，
-   我会分析可行性，择优取录，所以你喜欢的项目有可能会集成到serv00-play的项目中。
-   留言板：https://t.me/fanyou_channel/40
-EOF
-}
 
 checkInstalled(){
   local model=$1
@@ -2491,38 +1480,6 @@ checkInstalled(){
   return 1
 }
 
-changeHy2IP(){
-   read -p "是否让程序为HY2选择可用的IP？[y/n] [y]:" input
-   input=${input:-y}
-
-   if [[ "$input" == "y" ]]; then
-     cd ${installpath}/serv00-play/singbox
-     if [[ ! -e "singbox.json"  || ! -e "config.json" ]]; then
-        red "未安装节点，请先安装!"
-        return 1
-     fi
-     hy2_ip=$(get_ip)
-     if [[ -z "hy2_ip" ]]; then
-        red "很遗憾，已无可用IP!"
-        return 1
-     fi
-     if ! upInsertFd singbox.json HY2IP "$hy2_ip"; then
-        red "更新singbox.json配置文件失败!"
-        return 1
-     fi
-
-     if ! upSingboxFd config.json "inbounds" "tag" "hysteria-in" "listen" "$hy2_ip"; then 
-        red "更新config.json配置文件失败!"
-        return 1
-     fi
-     green "HY2 更换IP成功，当前IP为 $hy2_ip"
-
-     echo "正在重启sing-box..."
-     stopSingBox
-     startSingBox
-   fi
-
-}
 
 showMenu(){
   art_wrod=$(figlet "serv00-play")
@@ -2532,9 +1489,9 @@ showMenu(){
   echo "<------------------------------------------------------------------>"
   echo "请选择一个选项:"
 
-  options=("安装/更新serv00-play项目" "sun-panel"  "webssh"  "阅后即焚"  "待开发"  "设置保活的项目" "配置sing-box" \
-          "运行sing-box" "停止sing-box" "显示sing-box节点信息" "快照恢复" "系统初始化" "前置工作及设置中国时区" "管理哪吒探针" "卸载探针" "设置彩色开机字样" "显示本机IP" \
-          "mtproto代理" "alist管理" "端口管理" "域名证书管理" "一键root" "自动检测主机IP状态" "一键更换hy2的IP" "卸载" )
+  options=("安装/更新serv00-play项目" "sun-panel"  "webssh"  "阅后即焚"  "设置保活的项目" \
+           "快照恢复" "系统初始化" "前置工作及设置中国时区" "设置彩色开机字样" "显示本机IP" \
+          "alist管理" "端口管理" "域名证书管理" "自动检测主机IP状态" "卸载" )
 
   select opt in "${options[@]}"
   do
@@ -2552,66 +1509,36 @@ showMenu(){
               burnAfterReadingServ
               ;;
           5)
-              nonServ
-              ;;
-          6)
             setConfig
             ;;
-          7)
-            configSingBox
-            ;;
-          8)
-            startSingBox
-            ;;
-         9)
-            stopSingBox
-            ;;
-        10)
-            showSingBoxInfo
-            ;;
-        11)
+        6)
             ImageRecovery
             ;;
-        12)
+        7)
             InitServer
             ;;
-        13)
+        8)
            setCnTimeZone
            ;;
-        14)
-           manageNeZhaAgent
-           ;;
-        15)
-           uninstallAgent
-           ;;
-        16)
+        9)
            setColorWord
            ;;
-        17)
+        10)
            showIP
            ;;
-        18)
-           mtprotoServ
-           ;; 
-        19)
+        11)
            alistServ
            ;;
-        20)
+        12)
            portServ
            ;;
-        21)
+        13)
            domainSSLServ
            ;;
-        22)
-           rootServ
-           ;;
-        23)
+        14)
            getUnblockIP
            ;;
-        24)
-           changeHy2IP
-           ;;
-        25)
+        15)
             uninstall
             ;;
         0)

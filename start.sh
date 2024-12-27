@@ -2528,8 +2528,7 @@ showMenu(){
   art_wrod=$(figlet "serv00-play")
   echo "<------------------------------------------------------------------>"
   echo -e "${CYAN}${art_wrod}${RESET}"
-  echo -e "${GREEN} 饭奇骏频道:https://www.youtube.com/@frankiejun8965 ${RESET}"
-  echo -e "${GREEN} TG交流群:https://t.me/fanyousuiqun ${RESET}"
+  echo -e "${GREEN} 烟神殿大模型AI中转服务:https://yansd666.top${RESET}"
   echo "<------------------------------------------------------------------>"
   echo "请选择一个选项:"
 
